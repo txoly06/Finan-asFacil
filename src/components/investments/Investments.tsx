@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { PlusCircle, Trash2, Target } from 'lucide-react';
+import { PlusCircle, Trash2, Target, Edit2, Save, X } from 'lucide-react';
 import { useFinancial } from '../../context/FinancialContext';
 import { Card } from '../ui/Card';
 import { formatCurrency, formatDate } from '../../utils/format';
-import type { InvestmentCategory, InvestmentStatus } from '../../types';
+import type { Investment, InvestmentCategory, InvestmentStatus } from '../../types';
 import { cn } from '../../utils/cn';
 
 export const Investments: React.FC = () => {
-    const { investments, addInvestment, deleteInvestment } = useFinancial();
+    const { investments, addInvestment, updateInvestment, deleteInvestment } = useFinancial();
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editForm, setEditForm] = useState<Partial<Investment>>({});
+
     const [newInvestment, setNewInvestment] = useState({
         name: '',
         initialAmount: '',
@@ -42,15 +45,23 @@ export const Investments: React.FC = () => {
         });
     };
 
-    // Simplification: In card view, we might pop up a modal or switch view. 
-    // For this generic refactor, inline editing in cards is tricky.
-    // I will implement a quick "Edit Mode" toggled layout or just alert "Not implemented" for simplicity 
-    // BUT the original code supported it.
-    // I'll stick to basic structure. If user wants to edit, we can update later.
-    // Actually, I'll ignore the complicated inline editing for cards in this step to keep it clean, 
-    // or implement a simple edit form. Let's just allow deleting for now to save space, or open a modal (not implemented).
-    // Wait, I should match original features.
-    // I will skip inline editing for investments to ensure stability, as it was complex. 
+    const startEdit = (inv: Investment) => {
+        setEditingId(inv.id);
+        setEditForm(inv);
+    };
+
+    const saveEdit = async () => {
+        if (editingId && editForm) {
+            await updateInvestment(editingId, {
+                ...editForm,
+                initialAmount: typeof editForm.initialAmount === 'string' ? parseFloat(editForm.initialAmount) : editForm.initialAmount,
+                currentAmount: typeof editForm.currentAmount === 'string' ? parseFloat(editForm.currentAmount) : editForm.currentAmount,
+                targetReturn: typeof editForm.targetReturn === 'string' ? parseFloat(editForm.targetReturn) : editForm.targetReturn
+            });
+            setEditingId(null);
+            setEditForm({});
+        }
+    };
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -135,8 +146,92 @@ export const Investments: React.FC = () => {
                     const isPositive = returnValue >= 0;
                     const reachedTarget = returnPercent >= inv.targetReturn;
 
+                    if (editingId === inv.id) {
+                        return (
+                            <Card key={inv.id} className="shadow-2xl border-blue-200 ring-2 ring-blue-100">
+                                <div className="space-y-4">
+                                    <input
+                                        type="text"
+                                        value={editForm.name}
+                                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                        className="w-full border rounded-lg px-3 py-2 font-bold"
+                                        placeholder="Nome"
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                            value={editForm.category}
+                                            onChange={(e) => setEditForm({ ...editForm, category: e.target.value as InvestmentCategory })}
+                                            className="border rounded-lg px-3 py-2 text-sm"
+                                        >
+                                            <option value="ações">Ações</option>
+                                            <option value="fundos">Fundos</option>
+                                            <option value="criptomoedas">Criptomoedas</option>
+                                            <option value="renda-fixa">Renda Fixa</option>
+                                            <option value="imoveis">Imóveis</option>
+                                            <option value="outros">Outros</option>
+                                        </select>
+                                        <select
+                                            value={editForm.status}
+                                            onChange={(e) => setEditForm({ ...editForm, status: e.target.value as InvestmentStatus })}
+                                            className="border rounded-lg px-3 py-2 text-sm"
+                                        >
+                                            <option value="ativo">Ativo</option>
+                                            <option value="encerrado">Encerrado</option>
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-xs text-gray-500">Inicial</label>
+                                            <input
+                                                type="number"
+                                                value={editForm.initialAmount}
+                                                onChange={(e) => setEditForm({ ...editForm, initialAmount: parseFloat(e.target.value) })}
+                                                className="w-full border rounded-lg px-3 py-2"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500">Atual</label>
+                                            <input
+                                                type="number"
+                                                value={editForm.currentAmount}
+                                                onChange={(e) => setEditForm({ ...editForm, currentAmount: parseFloat(e.target.value) })}
+                                                className="w-full border rounded-lg px-3 py-2"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-500">Meta (%)</label>
+                                        <input
+                                            type="number"
+                                            value={editForm.targetReturn}
+                                            onChange={(e) => setEditForm({ ...editForm, targetReturn: parseFloat(e.target.value) })}
+                                            className="w-full border rounded-lg px-3 py-2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-500">Data Início</label>
+                                        <input
+                                            type="date"
+                                            value={editForm.startDate}
+                                            onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                                            className="w-full border rounded-lg px-3 py-2"
+                                        />
+                                    </div>
+                                    <div className="flex gap-2 justify-end pt-2">
+                                        <button onClick={saveEdit} className="flex items-center gap-1 bg-green-50 text-green-700 px-3 py-2 rounded-lg hover:bg-green-100">
+                                            <Save size={16} /> Salvar
+                                        </button>
+                                        <button onClick={() => setEditingId(null)} className="flex items-center gap-1 bg-gray-50 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-100">
+                                            <X size={16} /> Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </Card>
+                        );
+                    }
+
                     return (
-                        <Card key={inv.id} className="hover:shadow-2xl transition-all">
+                        <Card key={inv.id} className="hover:shadow-2xl transition-all group">
                             <div className="flex items-start justify-between mb-4">
                                 <div>
                                     <h4 className="font-bold text-gray-800 text-lg">{inv.name}</h4>
@@ -144,13 +239,20 @@ export const Investments: React.FC = () => {
                                         {inv.category}
                                     </span>
                                 </div>
-                                <div className="flex gap-2">
-                                    {/* Edit disabled for now in card view */}
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        onClick={() => startEdit(inv)}
+                                        className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-all"
+                                        title="Editar"
+                                    >
+                                        <Edit2 className="w-4 h-4" />
+                                    </button>
                                     <button
                                         onClick={() => {
                                             if (confirm('Deseja excluir?')) deleteInvestment(inv.id);
                                         }}
                                         className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-lg transition-all"
+                                        title="Excluir"
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
