@@ -8,6 +8,7 @@ import { Loans } from './components/loans/Loans';
 import { Investments } from './components/investments/Investments';
 import { Categories } from './components/categories/Categories';
 import { RecurringTransactions } from './components/recurring/RecurringTransactions';
+import { Settings } from './components/settings/Settings';
 import { Auth } from './components/auth/Auth';
 import { Loader2 } from 'lucide-react';
 
@@ -50,6 +51,7 @@ function App() {
             <Route path="recurring" element={<RecurringTransactions />} />
             <Route path="loans" element={<Loans />} />
             <Route path="investments" element={<Investments />} />
+            <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

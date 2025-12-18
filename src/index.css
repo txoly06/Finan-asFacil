@@ -4,6 +4,20 @@
 
 @layer base {
   body {
-    @apply antialiased text-gray-900 bg-gray-50;
+    @apply antialiased text-gray-900 bg-gray-50 transition-colors duration-300;
   }
+}
+
+:root {
+  --app-gradient: linear-gradient(135deg, #f0f4ff 0%, #e6e9f0 100%);
+}
+
+.dark {
+  --app-gradient: linear-gradient(135deg, #020617 0%, #0f172a 100%);
+}
+
+body {
+  background: var(--app-gradient);
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
 }

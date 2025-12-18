@@ -38,6 +38,12 @@ interface FinancialContextType {
     updateRecurringTransaction: (id: number, rec: Partial<RecurringTransaction>) => Promise<void>;
     deleteRecurringTransaction: (id: number) => Promise<void>;
 
+    darkMode: boolean;
+    setDarkMode: (val: boolean) => void;
+    privacyMode: boolean;
+    setPrivacyMode: (val: boolean) => void;
+    logout: () => Promise<void>;
+
     metrics: DashboardMetrics;
 }
 
@@ -105,6 +111,27 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     const [investments, setInvestments] = useState<Investment[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+
+    const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
+    const [privacyMode, setPrivacyMode] = useState(() => localStorage.getItem('privacy') === 'true');
+
+    useEffect(() => {
+        if (darkMode) {
+            document.documentElement.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+        }
+    }, [darkMode]);
+
+    useEffect(() => {
+        localStorage.setItem('privacy', privacyMode.toString());
+    }, [privacyMode]);
+
+    const logout = async () => {
+        await supabase.auth.signOut();
+    };
 
     const checkRecurringTransactions = async (recurring: RecurringTransaction[], userId: string) => {
         const today = new Date();
@@ -537,6 +564,7 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
             addInvestment, updateInvestment, deleteInvestment,
             addCategory, deleteCategory,
             addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction,
+            darkMode, setDarkMode, privacyMode, setPrivacyMode, logout,
             metrics: calculateMetrics()
         }}>
             {children}

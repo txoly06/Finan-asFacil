@@ -1,262 +1,288 @@
 import React from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Wallet, TrendingUp, TrendingDown, Target, BarChart3, PieChart as PieChartIcon, AlertCircle, CreditCard, DollarSign } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { Wallet, TrendingUp, TrendingDown, AlertCircle, CreditCard, Calendar } from 'lucide-react';
 import { useFinancial } from '../../context/FinancialContext';
 import { Card } from '../ui/Card';
 import { formatCurrency } from '../../utils/format';
-import type { Transaction } from '../../types';
+import { cn } from '../../utils/cn';
+
+interface TooltipPayload {
+    name: string;
+    value: number;
+    color?: string;
+    fill?: string;
+    payload: unknown;
+}
+
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: TooltipPayload[];
+    label?: string;
+    privacyMode: boolean;
+}
+
+const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload, label, privacyMode }) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-white dark:bg-slate-900 p-4 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl backdrop-blur-md z-50">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{label || payload[0].name}</p>
+                <div className="space-y-1">
+                    {payload.map((entry, index) => (
+                        <div key={index} className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }} />
+                                <span className="text-sm font-medium text-gray-600 dark:text-gray-300 capitalize">{entry.name}:</span>
+                            </div>
+                            <span className="text-sm font-black text-gray-900 dark:text-white">
+                                {privacyMode ? 'R$ ••••' : formatCurrency(entry.value)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
 
 export const Dashboard: React.FC = () => {
-    const { metrics, transactions } = useFinancial();
-    const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1'];
+    const {
+        transactions,
+        loans,
+        metrics,
+        privacyMode
+    } = useFinancial();
+
+    const maskValue = (val: string) => privacyMode ? 'R$ ••••' : val;
+
+    const summaryCards = [
+        {
+            title: 'Saldo Atual',
+            value: formatCurrency(metrics.saldo),
+            icon: Wallet,
+            color: 'blue',
+            detail: `Projetado: ${formatCurrency(metrics.saldoProjetado)}`,
+            detailIcon: AlertCircle
+        },
+        {
+            title: 'Receitas (Mês)',
+            value: formatCurrency(metrics.receitas),
+            icon: TrendingUp,
+            color: 'teal',
+            detail: `Pendentes: ${formatCurrency(metrics.receitasPendentes)}`,
+            detailIcon: CreditCard
+        },
+        {
+            title: 'Despesas (Mês)',
+            value: formatCurrency(metrics.despesas),
+            icon: TrendingDown,
+            color: 'rose',
+            detail: `Pendentes: ${formatCurrency(metrics.despesasPendentes)}`,
+            detailIcon: Calendar
+        }
+    ];
 
     const getCashFlowData = () => {
-        const last6Months = [];
-        const today = new Date();
+        const last6Months = Array.from({ length: 6 }, (_, i) => {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            return {
+                month: d.getMonth(),
+                year: d.getFullYear(),
+                label: d.toLocaleString('pt-BR', { month: 'short' })
+            };
+        }).reverse();
 
-        for (let i = 5; i >= 0; i--) {
-            const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
-            const month = date.toLocaleDateString('pt-BR', { month: 'short' });
-
-            const monthReceitas = transactions
-                .filter((t: Transaction) => {
-                    const txDate = new Date(t.date);
-                    return t.type === 'receita' &&
-                        t.status === 'pago' &&
-                        txDate.getMonth() === date.getMonth() &&
-                        txDate.getFullYear() === date.getFullYear();
-                })
-                .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-
-            const monthDespesas = transactions
-                .filter((t: Transaction) => {
-                    const txDate = new Date(t.date);
-                    return t.type === 'despesa' &&
-                        t.status === 'pago' &&
-                        txDate.getMonth() === date.getMonth() &&
-                        txDate.getFullYear() === date.getFullYear();
-                })
-                .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-
-            last6Months.push({
-                month,
-                receitas: monthReceitas,
-                despesas: monthDespesas,
-                saldo: monthReceitas - monthDespesas
+        return last6Months.map(m => {
+            const monthTxs = transactions.filter(t => {
+                const d = new Date(t.date);
+                return d.getMonth() === m.month && d.getFullYear() === m.year && t.status === 'pago';
             });
-        }
-        return last6Months;
+
+            return {
+                name: m.label,
+                receitas: monthTxs.filter(t => t.type === 'receita').reduce((sum, t) => sum + t.amount, 0),
+                despesas: monthTxs.filter(t => t.type === 'despesa').reduce((sum, t) => sum + t.amount, 0),
+            };
+        });
     };
 
     const getExpensesByCategory = () => {
-        const categories: Record<string, number> = {};
-        transactions
-            .filter((t: Transaction) => t.type === 'despesa' && t.status === 'pago')
-            .forEach((t: Transaction) => {
-                categories[t.category] = (categories[t.category] || 0) + t.amount;
-            });
+        const categories = transactions
+            .filter(t => t.type === 'despesa')
+            .reduce((acc: Record<string, number>, t) => {
+                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                return acc;
+            }, {});
 
-        return Object.entries(categories).map(([name, value]) => ({ name, value }));
+        return Object.entries(categories).map(([name, value]) => ({
+            name,
+            value: value
+        })).sort((a, b) => b.value - a.value);
     };
 
-    const cashFlowData = getCashFlowData();
-    const expensesData = getExpensesByCategory();
+    const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#6366f1', '#ec4899'];
+
+    // Insight logic: Comparison with previous month
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    const currentMonthTxs = transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+    const prevMonthTxs = transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+    });
+
+    const currentTotal = currentMonthTxs.filter(t => t.type === 'receita').reduce((sum, t) => sum + t.amount, 0);
+    const prevTotal = prevMonthTxs.filter(t => t.type === 'receita').reduce((sum, t) => sum + t.amount, 0);
+    const incomeGrowth = prevTotal > 0 ? ((currentTotal - prevTotal) / prevTotal) * 100 : 0;
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 rounded-2xl p-6 text-white shadow-xl">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                            <Wallet className="w-6 h-6" />
-                        </div>
-                        <div className="text-right text-emerald-100 text-xs font-medium">ATUAL</div>
-                    </div>
-                    <div className="text-3xl font-bold mb-1">{formatCurrency(metrics.saldo)}</div>
-                    <div className="text-emerald-100 text-sm">Saldo em Caixa</div>
+        <div className="space-y-8 animate-in fade-in duration-700">
+            {/* Header with quick insight */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 className="text-3xl font-black bg-gradient-to-r from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
+                        Seu Painel
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Aqui está o resumo das suas finanças.</p>
                 </div>
+                {incomeGrowth !== 0 && (
+                    <div className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all border",
+                        incomeGrowth > 0
+                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-900/20"
+                            : "bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/10 dark:border-rose-900/20"
+                    )}>
+                        {incomeGrowth > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {Math.abs(incomeGrowth).toFixed(1)}% {incomeGrowth > 0 ? 'mais' : 'menos'} receitas que mês passado
+                    </div>
+                )}
+            </div>
 
-                <div className="bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-xl">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                            <TrendingUp className="w-6 h-6" />
-                        </div>
-                        <div className="text-right text-blue-100 text-xs font-medium">RECEITAS</div>
-                    </div>
-                    <div className="text-3xl font-bold mb-1">{formatCurrency(metrics.receitas)}</div>
-                    <div className="text-blue-100 text-sm">Total Recebido</div>
-                </div>
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {summaryCards.map((card, index) => (
+                    <Card key={index} className="group hover:shadow-2xl transition-all duration-300 border-none bg-white dark:bg-slate-900 ring-1 ring-gray-100 dark:ring-slate-800 overflow-hidden relative">
+                        <div className={cn(
+                            "absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full opacity-[0.03] group-hover:scale-150 transition-transform duration-700",
+                            card.color === 'blue' ? 'bg-blue-600' : card.color === 'teal' ? 'bg-teal-600' : 'bg-rose-600'
+                        )} />
 
-                <div className="bg-gradient-to-br from-rose-500 via-rose-600 to-pink-600 rounded-2xl p-6 text-white shadow-xl">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                            <TrendingDown className="w-6 h-6" />
+                        <div className="flex items-start justify-between mb-4 relative z-10">
+                            <div className={cn(
+                                "p-3 rounded-2xl",
+                                card.color === 'blue' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
+                                    card.color === 'teal' ? 'bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400' :
+                                        'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                            )}>
+                                <card.icon size={24} />
+                            </div>
                         </div>
-                        <div className="text-right text-rose-100 text-xs font-medium">DESPESAS</div>
-                    </div>
-                    <div className="text-3xl font-bold mb-1">{formatCurrency(metrics.despesas)}</div>
-                    <div className="text-rose-100 text-sm">Total Gasto</div>
-                </div>
 
-                <div className="bg-gradient-to-br from-violet-500 via-purple-600 to-fuchsia-600 rounded-2xl p-6 text-white shadow-xl">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                            <Target className="w-6 h-6" />
+                        <div className="relative z-10">
+                            <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">{card.title}</p>
+                            <h3 className="text-3xl font-black text-gray-800 dark:text-white mb-3">
+                                {maskValue(card.value)}
+                            </h3>
+
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 border-t border-gray-50 dark:border-slate-800 pt-3">
+                                <card.detailIcon size={12} className="opacity-50" />
+                                {maskValue(card.detail)}
+                            </div>
                         </div>
-                        <div className="text-right text-violet-100 text-xs font-medium">INVESTIMENTOS</div>
-                    </div>
-                    <div className="text-3xl font-bold mb-1">{metrics.investmentReturn.toFixed(1)}%</div>
-                    <div className="text-violet-100 text-sm">Retorno Médio</div>
-                </div>
+                    </Card>
+                ))}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                            <BarChart3 className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-800">Fluxo de Caixa (6 meses)</h3>
-                    </div>
-                    <div className="h-[250px] w-full">
+                <Card title="Fluxo de Caixa">
+                    <div className="h-[300px] mt-4">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={cashFlowData}>
+                            <AreaChart data={getCashFlowData()}>
                                 <defs>
                                     <linearGradient id="colorReceitas" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                    </linearGradient>
-                                    <linearGradient id="colorDespesas" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
+                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-                                <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '12px' }} axisLine={false} tickLine={false} />
-                                <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} axisLine={false} tickLine={false} tickFormatter={(value) => `R$${value / 1000}k`} />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                                        border: '1px solid #e5e7eb',
-                                        borderRadius: '12px',
-                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                                    }}
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    formatter={(value: any) => [formatCurrency(Number(value)), '']}
-                                />
-                                <Area type="monotone" dataKey="receitas" name="Receitas" stroke="#10b981" strokeWidth={2} fill="url(#colorReceitas)" />
-                                <Area type="monotone" dataKey="despesas" name="Despesas" stroke="#ef4444" strokeWidth={2} fill="url(#colorDespesas)" />
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                                <Tooltip content={<CustomTooltip privacyMode={privacyMode} />} />
+                                <Area name="Receitas" type="monotone" dataKey="receitas" stroke="#3b82f6" fillOpacity={1} fill="url(#colorReceitas)" strokeWidth={3} />
+                                <Area name="Despesas" type="monotone" dataKey="despesas" stroke="#f43f5e" fillOpacity={0} strokeWidth={3} strokeDasharray="5 5" />
+                                <Legend verticalAlign="top" height={36} iconType="circle" />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
                 </Card>
 
-                <Card>
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-purple-100 rounded-lg">
-                            <PieChartIcon className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-800">Despesas por Categoria</h3>
+                <Card title="Despesas por Categoria">
+                    <div className="h-[300px] mt-4 flex flex-col md:flex-row items-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={getExpensesByCategory()}
+                                    innerRadius={70}
+                                    outerRadius={90}
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                    nameKey="name"
+                                >
+                                    {getExpensesByCategory().map((_, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip content={<CustomTooltip privacyMode={privacyMode} />} />
+                                <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" />
+                            </PieChart>
+                        </ResponsiveContainer>
                     </div>
-                    {expensesData.length > 0 ? (
-                        <div className="h-[250px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={expensesData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        {expensesData.map((_, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                                    <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                            <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                                {expensesData.map((entry, index) => (
-                                    <div key={index} className="flex items-center gap-1 text-xs text-gray-600">
-                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                                        {entry.name}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="h-64 flex items-center justify-center text-gray-400">
-                            <div className="text-center">
-                                <PieChartIcon className="w-16 h-16 mx-auto mb-3 opacity-30" />
-                                <p>Nenhuma despesa registrada</p>
-                            </div>
-                        </div>
-                    )}
                 </Card>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl shadow-xl p-6 border border-orange-100">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-orange-100 rounded-lg">
-                            <AlertCircle className="w-5 h-5 text-orange-600" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-800">Contas Pendentes</h3>
-                    </div>
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center p-4 bg-white/60 rounded-xl border border-green-200 backdrop-blur-sm">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                                    <TrendingUp className="w-5 h-5 text-green-600" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20 md:pb-0">
+                <Card title="Próximos Vencimentos">
+                    <div className="space-y-4 mt-4">
+                        {transactions.filter(t => t.status === 'pendente').slice(0, 5).map(tx => (
+                            <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-gray-100 dark:hover:border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800 dark:text-white">{tx.description}</p>
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">{tx.category}</p>
+                                    </div>
                                 </div>
-                                <span className="text-sm font-medium text-gray-700">A Receber</span>
+                                <span className="text-sm font-black text-gray-800 dark:text-white">{maskValue(formatCurrency(tx.amount))}</span>
                             </div>
-                            <span className="text-xl font-bold text-green-600">{formatCurrency(metrics.receitasPendentes)}</span>
-                        </div>
-                        <div className="flex justify-between items-center p-4 bg-white/60 rounded-xl border border-red-200 backdrop-blur-sm">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                                    <TrendingDown className="w-5 h-5 text-red-600" />
-                                </div>
-                                <span className="text-sm font-medium text-gray-700">A Pagar</span>
-                            </div>
-                            <span className="text-xl font-bold text-red-600">{formatCurrency(metrics.despesasPendentes)}</span>
-                        </div>
+                        ))}
                     </div>
-                </div>
+                </Card>
 
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-xl p-6 border border-blue-100">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                            <CreditCard className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-800">Empréstimos Ativos</h3>
-                    </div>
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center p-4 bg-white/60 rounded-xl border border-blue-200 backdrop-blur-sm">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                    <DollarSign className="w-5 h-5 text-blue-600" />
+                <Card title="Empréstimos Ativos">
+                    <div className="space-y-4 mt-4">
+                        {loans.filter(l => l.status === 'ativo').map(loan => (
+                            <div key={loan.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-gray-100 dark:hover:border-slate-800">
+                                <div>
+                                    <p className="text-sm font-bold text-gray-800 dark:text-white">{loan.entity}</p>
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">{loan.type === 'emprestado' ? 'Você Emprestou' : 'Você Recebeu'}</p>
                                 </div>
-                                <span className="text-sm font-medium text-gray-700">Você Emprestou</span>
-                            </div>
-                            <span className="text-xl font-bold text-blue-600">{formatCurrency(metrics.emprestimosAtivos)}</span>
-                        </div>
-                        <div className="flex justify-between items-center p-4 bg-white/60 rounded-xl border border-orange-200 backdrop-blur-sm">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                                    <DollarSign className="w-5 h-5 text-orange-600" />
+                                <div className="text-right">
+                                    <p className="text-sm font-black text-blue-600 dark:text-blue-400">{maskValue(formatCurrency(loan.amount))}</p>
+                                    <p className="text-[10px] text-gray-400">Vencimento: {loan.dueDate}</p>
                                 </div>
-                                <span className="text-sm font-medium text-gray-700">Você Deve</span>
                             </div>
-                            <span className="text-xl font-bold text-orange-600">{formatCurrency(metrics.emprestimosRecebidos)}</span>
-                        </div>
+                        ))}
                     </div>
-                </div>
+                </Card>
             </div>
         </div>
     );
