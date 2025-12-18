@@ -65,9 +65,10 @@ export const AppLayout: React.FC = () => {
             </main>
 
             {/* Mobile Bottom Nav */}
-            <nav className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-gray-200 dark:border-slate-800 px-6 py-3 flex gap-8 items-center rounded-3xl shadow-2xl z-50">
+            <nav className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-gray-200 dark:border-slate-800 px-4 py-3 flex gap-6 md:gap-8 items-center rounded-3xl shadow-2xl z-50">
                 <NavLink to="/" className={({ isActive }) => cn("p-2 transition-all", isActive ? "text-blue-600 scale-125" : "text-gray-400")}><LayoutDashboard size={20} /></NavLink>
                 <NavLink to="/transactions" className={({ isActive }) => cn("p-2 transition-all", isActive ? "text-blue-600 scale-125" : "text-gray-400")}><Receipt size={20} /></NavLink>
+                <NavLink to="/categories" className={({ isActive }) => cn("p-2 transition-all", isActive ? "text-blue-600 scale-125" : "text-gray-400")}><Tag size={20} /></NavLink>
                 <NavLink to="/loans" className={({ isActive }) => cn("p-2 transition-all", isActive ? "text-blue-600 scale-125" : "text-gray-400")}><Landmark size={20} /></NavLink>
                 <NavLink to="/settings" className={({ isActive }) => cn("p-2 transition-all", isActive ? "text-blue-600 scale-125" : "text-gray-400")}><Settings size={20} /></NavLink>
             </nav>
